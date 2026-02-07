@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import google.generativeai as genai
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,18 +7,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings, logger
 from app.routes import router
 
-# Validate configuration
-if not settings.validate():
-    raise RuntimeError("Configuration validation failed!")
 
-# Configure Gemini API
-genai.configure(api_key=settings.gemini_api_key)
-logger.info(f"Gemini API configured with model: {settings.gemini_model}")
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Run startup tasks after the server is ready to accept connections."""
+    # Validate configuration
+    if not settings.validate():
+        logger.error("Configuration validation failed — API calls will fail.")
+    else:
+        genai.configure(api_key=settings.gemini_api_key)
+        logger.info(f"Gemini API configured with model: {settings.gemini_model}")
+    settings.log_summary()
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="OCR API using Google Gemini AI",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -31,9 +40,6 @@ if settings.cors_enabled:
 
 # Register routes
 app.include_router(router)
-
-# Log configuration on startup
-settings.log_summary()
 
 
 if __name__ == "__main__":
